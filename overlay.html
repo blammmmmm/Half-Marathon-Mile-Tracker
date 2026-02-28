@@ -141,10 +141,9 @@
           </div>
         </div>
 
-        <div class="foot">
-          <div id="mileOn">Mile: 0.0 / 13.1</div>
-          <div class="muted" id="roomTag"></div>
-        </div>
+       <div class="foot">
+  <div id="mileOn">Mile: 0.0 / 13.1</div>
+</div>
       </div>
     </div>
   </div>
@@ -160,7 +159,6 @@
   }
   const params = new URLSearchParams(location.search);
   const room = sanitizeRoom(params.get("room") || "half-marathon");
-  document.getElementById("roomTag").textContent = "room: " + room;
 
   const url = `${DB_BASE}/rooms/${encodeURIComponent(room)}/milesCompleted.json`;
 
