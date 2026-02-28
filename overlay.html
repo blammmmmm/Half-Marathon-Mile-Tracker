@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Half Marathon Overlay</title>
+<style>
+  :root{
+    --w: 740px;
+    --h: 200px;
+    --radius: 28px;
+    --pad: 20px;
+
+    --bgA: rgba(0,0,0,0.78);
+    --bgB: rgba(0,0,0,0.55);
+
+    --text: rgba(255,255,255,0.92);
+    --muted: rgba(255,255,255,0.70);
+
+    --left: #4cd964;   /* green-ish */
+    --right:#4aa3ff;   /* blue-ish */
+
+    --track: rgba(255,255,255,0.16);
+    --shadow: 0 18px 70px rgba(0,0,0,0.45);
+  }
+
+  html,body{margin:0;background:transparent;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+  .stage{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:flex-end;padding:56px;pointer-events:none}
+  .card{
+    width:var(--w); height:var(--h);
+    border-radius:var(--radius);
+    position:relative; overflow:hidden;
+    box-shadow:var(--shadow); isolation:isolate;
+  }
+  .plate{
+    position:absolute; inset:0;
+    background:linear-gradient(135deg,var(--bgA),var(--bgB));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .card::before{
+    content:""; position:absolute; inset:0; border-radius:var(--radius); padding:1.5px;
+    background:linear-gradient(135deg,rgba(255,255,255,0.26),rgba(255,255,255,0.08),rgba(255,255,255,0.12));
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;
+    pointer-events:none;
+  }
+  .content{position:absolute; inset:0; padding:var(--pad); display:grid; gap:14px; align-content:center}
+  .top{display:flex; justify-content:space-between; align-items:flex-start; gap:18px}
+  .block{display:grid; gap:6px}
+  .value{
+    font-weight:900;
+    font-size:64px;
+    letter-spacing:-0.02em;
+    line-height:1;
+    display:flex; align-items:baseline; gap:6px;
+  }
+  .mi{font-size:28px; font-weight:800; opacity:.95}
+  .label{font-size:34px; font-weight:900; letter-spacing:-0.01em}
+  .label.left{color:rgba(76,217,100,0.90)}
+  .label.right{color:rgba(74,163,255,0.90)}
+  .muted{color:var(--muted)}
+
+  .track{
+    height:26px; border-radius:999px;
+    background:var(--track);
+    overflow:hidden;
+    position:relative;
+  }
+  .fillLeft{
+    position:absolute; left:0; top:0; bottom:0;
+    width:50%;
+    background:linear-gradient(90deg, rgba(76,217,100,0.95), rgba(76,217,100,0.65));
+    border-radius:999px;
+    transition: width .45s cubic-bezier(.2,.9,.2,1);
+  }
+  .fillRight{
+    position:absolute; right:0; top:0; bottom:0;
+    width:50%;
+    background:linear-gradient(90deg, rgba(74,163,255,0.65), rgba(74,163,255,0.95));
+    border-radius:999px;
+    transition: width .45s cubic-bezier(.2,.9,.2,1);
+  }
+
+  /* Moving “runner dot” */
+  .markerWrap{position:absolute; inset:0; pointer-events:none}
+  .marker{
+    position:absolute; top:50%;
+    width:34px; height:34px; border-radius:999px;
+    transform: translate(-50%,-50%);
+    background:rgba(255,255,255,0.92);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.45);
+    border:6px solid rgba(76,217,100,0.85);
+    transition: left .45s cubic-bezier(.2,.9,.2,1);
+  }
+
+  .ticks{
+    position:absolute; inset:0; opacity:.55;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0 72px;
+  }
+  .tick{width:6px; height:10px; border-radius:2px; background:rgba(0,0,0,0.65)}
+  .foot{
+    display:flex; justify-content:space-between; align-items:center;
+    font-weight:800; color:rgba(255,255,255,0.78);
+    font-size:16px;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="card">
+      <div class="plate"></div>
+      <div class="content">
+        <div class="top">
+          <div class="block">
+            <div class="value" style="color:var(--text)">
+              <span id="dist">0.0</span><span class="mi">mi</span>
+            </div>
+            <div class="label left">Distance</div>
+          </div>
+
+          <div class="block" style="text-align:right">
+            <div class="value" style="color:var(--text)">
+              <span id="remain">13.1</span><span class="mi">mi</span>
+            </div>
+            <div class="label right">Remaining</div>
+          </div>
+        </div>
+
+        <div class="track">
+          <div class="fillLeft" id="fillLeft"></div>
+          <div class="fillRight" id="fillRight"></div>
+
+          <div class="ticks" aria-hidden="true">
+            <div class="tick"></div><div class="tick"></div><div class="tick"></div>
+          </div>
+
+          <div class="markerWrap">
+            <div class="marker" id="marker"></div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <div id="mileOn">Mile: 0.0 / 13.1</div>
+          <div class="muted" id="roomTag"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ====== CONFIG (ONLY THESE 2) ======
+  const DB_BASE = "https://YOUR-PROJECT-default-rtdb.firebaseio.com"; // no trailing slash
+  const TARGET = 13.1;
+  // ==================================
+
+  function sanitizeRoom(s){
+    return String(s || "half-marathon").replace(/[.#$\[\]\/]/g, "-");
+  }
+  const params = new URLSearchParams(location.search);
+  const room = sanitizeRoom(params.get("room") || "half-marathon");
+  document.getElementById("roomTag").textContent = "room: " + room;
+
+  const url = `${DB_BASE}/rooms/${encodeURIComponent(room)}/milesCompleted.json`;
+
+  const distEl = document.getElementById("dist");
+  const remEl  = document.getElementById("remain");
+  const fillL  = document.getElementById("fillLeft");
+  const fillR  = document.getElementById("fillRight");
+  const marker = document.getElementById("marker");
+  const mileOn = document.getElementById("mileOn");
+
+  let miles = 0;
+
+  function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
+
+  function render(){
+    const done = clamp(miles, 0, 9999);
+    const remaining = Math.max(0, TARGET - done);
+    const prog = clamp(done / TARGET, 0, 1);
+
+    distEl.textContent = done.toFixed(1);
+    remEl.textContent = remaining.toFixed(1);
+    mileOn.textContent = `Mile: ${done.toFixed(1)} / ${TARGET}`;
+
+    // Left fill grows with progress, right shrinks
+    fillL.style.width = (prog * 100) + "%";
+    fillR.style.width = ((1 - prog) * 100) + "%";
+
+    // Marker travels across track (5% padding each side)
+    const leftPct = 5 + prog * 90;
+    marker.style.left = leftPct + "%";
+
+    // Marker border can shift from green to blue near end (optional)
+    marker.style.borderColor = prog >= 1 ? "rgba(255,208,92,0.95)" : "rgba(76,217,100,0.85)";
+  }
+
+  async function fetchMiles(){
+    try{
+      const res = await fetch(url, { cache: "no-store" });
+      if(!res.ok) return;
+      const v = await res.json();
+      const n = Number(v);
+      if(Number.isFinite(n)) miles = n;
+      else miles = 0;
+      render();
+    } catch(e) {}
+  }
+
+  fetchMiles();
+  setInterval(fetchMiles, 800);     // stays synced even if mod updates fast
+  setInterval(render, 200);         // keeps animation smooth between polls
+</script>
+</body>
+</html>
