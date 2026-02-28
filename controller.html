@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Half Marathon Controller</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:rgba(255,255,255,0.06);
+    --text:rgba(255,255,255,0.92); --muted:rgba(255,255,255,0.70);
+    --green:#4cd964; --blue:#4aa3ff; --danger:#ff4d6d;
+    --radius:18px; --shadow:0 18px 60px rgba(0,0,0,0.45);
+  }
+  html,body{margin:0;height:100%;background:radial-gradient(900px 600px at 20% 0%, rgba(76,217,100,0.10), transparent 60%),
+    radial-gradient(900px 600px at 90% 20%, rgba(74,163,255,0.10), transparent 55%), var(--bg);
+    color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+  .wrap{max-width:720px;margin:0 auto;padding:22px 16px 36px}
+  .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px}
+  h1{margin:0;font-size:20px;letter-spacing:-.01em}
+  .room{color:var(--muted);font-size:13px}
+  .card{background:linear-gradient(180deg,var(--card), rgba(255,255,255,0.04));
+    border:1px solid rgba(255,255,255,0.10);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}
+  .head{padding:16px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;gap:14px;align-items:center}
+  .big{font-size:54px;font-weight:900;letter-spacing:-.02em;line-height:1}
+  .sub{color:var(--muted);font-weight:800;font-size:12px}
+  .btns{padding:16px;display:grid;gap:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  button{
+    flex:1 1 140px;min-width:120px;
+    border:1px solid rgba(255,255,255,0.14);
+    background:rgba(255,255,255,0.08);
+    color:var(--text);
+    border-radius:14px;
+    padding:14px;
+    font-size:16px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .g{background:rgba(76,217,100,0.14);border-color:rgba(76,217,100,0.30)}
+  .b{background:rgba(74,163,255,0.14);border-color:rgba(74,163,255,0.30)}
+  .d{background:rgba(255,77,109,0.14);border-color:rgba(255,77,109,0.32)}
+  .field{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.10);
+    border-radius:16px;padding:12px;
+  }
+  input{
+    flex:1 1 220px;min-width:200px;
+    padding:12px;border-radius:12px;
+    border:1px solid rgba(255,255,255,0.14);
+    background:rgba(0,0,0,0.22);
+    color:var(--text);outline:none;
+    font-size:16px;font-weight:800;
+  }
+  .note{color:var(--muted);font-size:13px;line-height:1.45;padding:0 16px 16px}
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.14);
+    padding:10px 12px;border-radius:999px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;
+    backdrop-filter:blur(10px)
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Half Marathon Controller</h1>
+    <div class="room">room: <span id="roomLabel">—</span></div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div>
+        <div class="sub">MILES COMPLETED</div>
+        <div class="big"><span id="milesBig">0.0</span><span style="font-size:22px;font-weight:900;opacity:.9"> mi</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="sub">TARGET</div>
+        <div style="font-size:22px;font-weight:900">13.1 mi</div>
+      </div>
+    </div>
+
+    <div class="btns">
+      <div class="row">
+        <button class="g" id="plus05">+0.5</button>
+        <button class="g" id="plus1">+1</button>
+        <button class="b" id="minus05">-0.5</button>
+        <button class="b" id="minus1">-1</button>
+      </div>
+
+      <div class="field">
+        <input id="setInput" type="number" step="0.1" inputmode="decimal" placeholder="Set miles (ex: 6.5)" />
+        <button id="setBtn">Set</button>
+        <button class="d" id="resetBtn">Reset</button>
+      </div>
+    </div>
+
+    <div class="note">
+      • Use <b>+0.5</b> for half-mile updates, <b>+1</b> for full miles.<br/>
+      • “Set” updates the number without breaking the overlay animation (it transitions smoothly).<br/>
+      • If something looks cached in OBS, change <code>&v=</code> at the end of the URL.
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<script>
+  // ====== CONFIG (ONLY THIS) ======
+  const DB_BASE = "https://YOUR-PROJECT-default-rtdb.firebaseio.com"; // no trailing slash
+  // =================================
+
+  function sanitizeRoom(s){
+    return String(s || "half-marathon").replace(/[.#$\[\]\/]/g, "-");
+  }
+
+  const params = new URLSearchParams(location.search);
+  const room = sanitizeRoom(params.get("room") || "half-marathon");
+  document.getElementById("roomLabel").textContent = room;
+
+  const url = `${DB_BASE}/rooms/${encodeURIComponent(room)}/milesCompleted.json`;
+
+  const milesBig = document.getElementById("milesBig");
+  const toast = document.getElementById("toast");
+
+  let miles = 0;
+
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>toast.classList.remove("show"), 900);
+  }
+
+  function clamp(n){
+    n = Number(n);
+    if(!Number.isFinite(n)) n = 0;
+    return Math.max(0, Math.round(n * 10) / 10); // keep to 0.1
+  }
+
+  async function read(){
+    try{
+      const res = await fetch(url, { cache: "no-store" });
+      if(!res.ok) return;
+      const v = await res.json();
+      miles = clamp(v || 0);
+      milesBig.textContent = miles.toFixed(1);
+    }catch(e){}
+  }
+
+  async function write(next){
+    next = clamp(next);
+    try{
+      await fetch(url, {
+        method:"PUT",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(next)
+      });
+      miles = next;
+      milesBig.textContent = miles.toFixed(1);
+      showToast("Saved: " + miles.toFixed(1) + " mi");
+    } catch(e){
+      showToast("Write failed (check rules)");
+    }
+  }
+
+  document.getElementById("plus05").onclick  = ()=>write(miles + 0.5);
+  document.getElementById("plus1").onclick   = ()=>write(miles + 1);
+  document.getElementById("minus05").onclick = ()=>write(miles - 0.5);
+  document.getElementById("minus1").onclick  = ()=>write(miles - 1);
+
+  document.getElementById("setBtn").onclick = ()=>{
+    const v = document.getElementById("setInput").value;
+    const next = clamp(v);
+    if (Math.abs(next - miles) >= 3){
+      if(!confirm(`Set miles from ${miles.toFixed(1)} to ${next.toFixed(1)}?`)) return;
+    }
+    write(next);
+  };
+
+  document.getElementById("resetBtn").onclick = ()=>{
+    if(!confirm("Reset miles to 0.0?")) return;
+    write(0);
+  };
+
+  read();
+  setInterval(read, 1200);
+</script>
+</body>
+</html>
